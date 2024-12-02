@@ -1,0 +1,161 @@
+version: 2.1
+orbs:
+  node: circleci/node@5.1
+  aws-s3: circleci/aws-s3@3.0
+
+jobs:
+  Build:
+    docker:
+      - image: cimg/base:stable
+    parameters:
+      build-target-env:
+        description: The name of the environment being deployed to.
+        type: string
+      skip-lint:
+        description: Whether the lint step should be skipped or not. Defaults to 'false'.
+        type: boolean
+        default: false
+      skip-test:
+        description: Whether the test step should be skipped or not. Defaults to 'false'.
+        type: boolean
+        default: false
+      build-output-directory-name:
+        description: The name of the build output directory. Defaults to 'build'.
+        type: string
+        default: build
+    steps:
+      - checkout
+      - run:
+          name: Additional Build Environment Setup
+          command: |
+            echo "export REACT_APP_ENV=<< parameters.build-target-env >>" >> "$BASH_ENV"
+            cp .npmrc.build .npmrc
+      - node/install:
+          node-version: "lts"
+      - run:
+          name: Install Dependencies
+          command: npm install
+      - when:
+          condition:
+            equal: [false, << parameters.skip-lint >>]
+          steps:
+            - run:
+                name: Lint
+                command: npm run lint
+      - when:
+          condition:
+            equal: [false, << parameters.skip-test >>]
+          steps:
+            - run:
+                name: Test
+                command: npm run test:coverage -- --ci
+      - run:
+          name: Build
+          command: npm run build
+      - persist_to_workspace:
+          root: << parameters.build-output-directory-name >>
+          paths:
+            - "*"
+  Deploy:
+    docker:
+      - image: cimg/base:stable
+    parameters:
+      deploy-target-prefix:
+        description: The application's unique prefix for S3 deployment.
+        type: string
+      build-output-directory-name:
+        description: The name of the build output directory. Defaults to 'build'.
+        type: string
+        default: build
+    steps:
+      - attach_workspace:
+          at: << parameters.build-output-directory-name >>
+      - aws-s3/sync:
+          arguments: |
+            --acl public-read \
+            --cache-control "no-cache"
+          from: << parameters.build-output-directory-name >>
+          to: "s3://$DEPLOYMENT_TARGET_S3_BUCKET/<< parameters.deploy-target-prefix >>"
+
+workflows:
+  MVP Build Only:
+    when:
+      not:
+        or:
+          - equal: [develop, << pipeline.git.branch >>]
+          - equal: [dev, << pipeline.git.branch >>]
+          - equal: [qa, << pipeline.git.branch >>]
+          - equal: [master, << pipeline.git.branch >>]
+          - equal: [main, << pipeline.git.branch >>]
+    jobs:
+      - Build:
+          build-target-env: "development"
+          context:
+            - frontend-global
+  MVP Build and Deploy (Dev):
+    when:
+      or:
+        - equal: [dev, << pipeline.git.branch >>]
+        - equal: [develop, << pipeline.git.branch >>]
+    jobs:
+      - Build:
+          build-target-env: "development"
+          context:
+            - frontend-global
+      - Deploy:
+          requires:
+            - Build
+          context:
+            - khq-main-confighq-frontend-deployment-dev
+          deploy-target-prefix: "khq-app-with-react-compiler"
+  MVP Build and Deploy (QA):
+    when:
+      and:
+        - equal: [qa, << pipeline.git.branch >>]
+    jobs:
+      - Build:
+          build-target-env: "qa"
+          context:
+            - frontend-global
+      - Deploy:
+          requires:
+            - Build
+          context:
+            - khq-main-confighq-frontend-deployment-qa
+          deploy-target-prefix: "khq-app-with-react-compiler"
+  MVP Build Only (Prod):
+    when:
+      or:
+        - equal: [master, << pipeline.git.branch >>]
+        - equal: [main, << pipeline.git.branch >>]
+    jobs:
+      - Build:
+          build-target-env: "prod"
+          context:
+            - frontend-global
+  MVP Build and Deploy (Prod): # Only runs when tagged
+    when:
+      matches:
+        pattern: ^v.*$
+        value: << pipeline.git.tag >>
+    jobs:
+      - Build:
+          build-target-env: "prod"
+          context:
+            - frontend-global
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+      - Deploy:
+          requires:
+            - Build
+          context:
+            - khq-main-confighq-frontend-deployment-prod
+          deploy-target-prefix: "khq-app-with-react-compiler"
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/

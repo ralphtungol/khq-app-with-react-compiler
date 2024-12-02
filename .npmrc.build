@@ -1,0 +1,5 @@
+registry=https://nexus.ifactornotifi.com/repository/kubra-npm-group/
+//nexus.ifactornotifi.com/repository/kubra-npm-group/:_auth=${NPM_TOKEN_NEXUS}
+// Font Awesome pro registry settings:
+@fortawesome:registry=https://npm.fontawesome.com/
+//npm.fontawesome.com/:_authToken=${NPM_TOKEN_FONTAWESOME}

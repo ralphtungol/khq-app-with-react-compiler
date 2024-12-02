@@ -1,0 +1,38 @@
+# dependencies
+node_modules
+
+# testing
+coverage
+
+# production
+dist
+build
+
+# misc
+.DS_Store
+.env
+npm-debug.log
+.idea
+.vscode
+yarn.lock
+jsconfig.json
+
+# ignore package
+*.tgz
+
+# mocks
+__mocks__
+src/api-mocks
+
+# configs
+.eslintrc.js
+*.config.js
+setupJest.ts
+setupAfterEnv.ts
+test
+
+# types generator
+types-generator/
+
+# generated
+src/generated
